@@ -357,7 +357,6 @@
       let dt = 10;
       let timerId;
       let startTime = 0;
-      let lastSampleTime = 0;
       let measurementStartedAt;
       let measurementName = "";
       let sensorOn = false;
@@ -390,35 +389,24 @@
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         const data = [];
+        let min = 0;
+        let max = 0;
 
         function resize() {
-          const rect = canvas.getBoundingClientRect();
-          const ratio = window.devicePixelRatio || 1;
-          canvas.width = Math.max(1, Math.floor(rect.width * ratio));
-          canvas.height = Math.max(1, Math.floor(rect.height * ratio));
-          ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+          const width = Math.max(1, Math.floor(canvas.clientWidth));
+          canvas.width = width;
+          canvas.height = 54;
           draw();
         }
 
-        function getRange() {
-          if (!data.length) return { min: 0, max: 0 };
-          return {
-            min: Math.min(0, ...data),
-            max: Math.max(0, ...data)
-          };
-        }
-
-        function toCanvasY(v, height, min, max) {
-          if (max === min) return height / 2;
-          const padding = 4;
-          const plotHeight = height - padding * 2;
-          return padding + plotHeight - plotHeight * (v - min) / (max - min);
+        function toCanvasY(v, height) {
+          if (max === min) return 0;
+          return height - height * (v - min) / (max - min);
         }
 
         function draw() {
-          const width = canvas.clientWidth;
-          const height = canvas.clientHeight;
-          const { min, max } = getRange();
+          const width = canvas.width;
+          const height = canvas.height;
           ctx.clearRect(0, 0, width, height);
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(0, 0, width, height);
@@ -426,24 +414,36 @@
           ctx.strokeStyle = "#9aa7b7";
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.moveTo(0, toCanvasY(0, height, min, max));
-          ctx.lineTo(width, toCanvasY(0, height, min, max));
+          ctx.moveTo(0, toCanvasY(0, height));
+          ctx.lineTo(width, toCanvasY(0, height));
           ctx.stroke();
 
           if (!data.length) return;
           ctx.strokeStyle = color;
           ctx.lineWidth = 1.5;
           ctx.beginPath();
-          ctx.moveTo(0, toCanvasY(data[0], height, min, max));
+          ctx.moveTo(0, toCanvasY(data[0], height));
           for (let i = 1; i < data.length; i += 1) {
-            ctx.lineTo(i, toCanvasY(data[i], height, min, max));
+            ctx.lineTo(i, toCanvasY(data[i], height));
           }
           ctx.stroke();
         }
 
+        function fillZeros() {
+          data.length = 0;
+          const width = Math.max(1, Math.floor(canvas.clientWidth || canvas.width || 1));
+          for (let i = 0; i < width; i += 1) {
+            data.push(0);
+          }
+        }
+
         row.append(value, canvas);
         container.appendChild(row);
-        requestAnimationFrame(resize);
+        requestAnimationFrame(() => {
+          resize();
+          fillZeros();
+          draw();
+        });
         window.addEventListener("resize", resize);
 
         return {
@@ -454,11 +454,15 @@
               data.splice(0, data.length - width + 1);
             }
             data.push(v);
+            if (v < min) min = v;
+            if (v > max) max = v;
             value.textContent = `${label.text}: ${v.toFixed(3)}`;
             draw();
           },
           reset() {
-            data.length = 0;
+            min = 0;
+            max = 0;
+            fillZeros();
             value.textContent = `${label.text}: 0.000`;
             draw();
           }
@@ -539,8 +543,6 @@
         arr = (rotrate.gamma || 0) * Math.PI / 180;
         brr = (rotrate.alpha || 0) * Math.PI / 180;
         grr = (rotrate.beta || 0) * Math.PI / 180;
-
-        recordMeasurementSample(Date.now());
       }
 
       // Same Euler-angle order as the reference: Rz(alpha) * Rx(beta) * Ry(gamma).
@@ -557,15 +559,13 @@
         return [awx, awy, awz];
       }
 
-      function recordMeasurementSample(now, force = false) {
+      function appendMeasurementSample(now) {
         if (!measuring || !dataText) return;
-        if (!force && now < lastSampleTime + dt) return;
 
         const elapsed = now - startTime;
         const [awx, awy, awz] = transformAcceleration(ax, ay, az, ar, br, gr);
         el.currentTime.textContent = elapsed;
         dataText += `${(elapsed / 1000).toFixed(3)},${ax.toFixed(5)},${ay.toFixed(5)},${az.toFixed(5)},${awx.toFixed(5)},${awy.toFixed(5)},${awz.toFixed(5)},${ar.toFixed(5)},${br.toFixed(5)},${gr.toFixed(5)},${arr.toFixed(5)},${brr.toFixed(5)},${grr.toFixed(5)}\n`;
-        lastSampleTime = now;
       }
 
       async function requestSensorPermission() {
@@ -607,7 +607,7 @@
               lastChartTime = now;
             }
 
-            recordMeasurementSample(now);
+            appendMeasurementSample(now);
           }, dt);
 
           setStatus("センサを起動しました。測定開始を押すとCSV記録を始めます。", "ok");
@@ -635,10 +635,9 @@
         dataText = "time[s],ax[m/s^2],ay[m/s^2],az[m/s^2],awx[m/s^2],awy[m/s^2],awz[m/s^2],ar[rad],br[rad],gr[rad],arr[rad/s],brr[rad/s],grr[rad/s]\n";
         measurementStartedAt = new Date();
         startTime = measurementStartedAt.getTime();
-        lastSampleTime = startTime;
         el.currentTime.textContent = "0";
 
-        recordMeasurementSample(startTime, true);
+        appendMeasurementSample(startTime);
 
         setStatus("測定中です。終了を押すとCSVをダウンロードできます。", "ok");
         setUiState();
