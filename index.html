@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>回転補正加速度計測</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --text: #17202a;
+        --muted: #667085;
+        --line: #d8dee6;
+        --blue: #1f77b4;
+        --orange: #ff7f0e;
+        --green: #2ca02c;
+        --danger: #b42318;
+        --ok: #047857;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.5;
+      }
+
+      main {
+        width: min(1080px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 24px 0 40px;
+      }
+
+      header {
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-size: clamp(1.45rem, 3vw, 2.2rem);
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .control {
+        min-width: 0;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      button {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid #9aa7b7;
+        border-radius: 6px;
+        background: #ffffff;
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: #165a96;
+        background: #165a96;
+        color: #ffffff;
+      }
+
+      button.danger {
+        border-color: var(--danger);
+        background: var(--danger);
+        color: #ffffff;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: #165a96;
+      }
+
+      input[type="text"] {
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid #9aa7b7;
+        border-radius: 6px;
+        padding: 8px 10px;
+        background: #ffffff;
+        color: var(--text);
+        font: inherit;
+      }
+
+      .readouts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 10px;
+        background: #fbfcfe;
+      }
+
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 2px;
+        font-variant-numeric: tabular-nums;
+        font-size: 1.1rem;
+      }
+
+      .status {
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .status.ok {
+        color: var(--ok);
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .charts {
+        display: grid;
+        gap: 14px;
+        margin-top: 16px;
+      }
+
+      .chart-block h2 {
+        margin: 0 0 2px;
+        font-size: 1rem;
+        letter-spacing: 0;
+      }
+
+      .chart-block p {
+        margin-bottom: 8px;
+        font-size: 0.86rem;
+      }
+
+      .series {
+        display: grid;
+        grid-template-columns: 108px minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+        margin: 8px 0;
+      }
+
+      .series-label {
+        font-variant-numeric: tabular-nums;
+        font-size: 0.9rem;
+      }
+
+      .series-label.blue {
+        color: var(--blue);
+      }
+
+      .series-label.orange {
+        color: var(--orange);
+      }
+
+      .series-label.green {
+        color: var(--green);
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 54px;
+        border: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      details {
+        margin-top: 14px;
+      }
+
+      summary {
+        cursor: pointer;
+        color: var(--text);
+        font-weight: 650;
+      }
+
+      @media (max-width: 780px) {
+        header,
+        .controls,
+        .readouts {
+          grid-template-columns: 1fr;
+        }
+
+        header {
+          display: block;
+        }
+
+        .controls {
+          display: grid;
+        }
+
+        .readouts {
+          display: grid;
+        }
+
+        .series {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>回転補正加速度計測</h1>
+          <p>デバイス固定座標系の加速度を、端末の姿勢角で静止座標系へ変換してCSVに保存します。</p>
+        </div>
+      </header>
+
+      <section class="panel" aria-label="計測操作">
+        <div class="controls">
+          <div class="control">
+            <label for="sensorButton">センサ</label>
+            <button id="sensorButton" class="primary" type="button">センサをオン</button>
+          </div>
+          <div class="control">
+            <label for="startButton">測定</label>
+            <button id="startButton" type="button" disabled>開始</button>
+          </div>
+          <div class="control">
+            <label for="stopButton">停止</label>
+            <button id="stopButton" class="danger" type="button" disabled>終了</button>
+          </div>
+          <div class="control">
+            <label for="downloadButton">CSV</label>
+            <button id="downloadButton" type="button" disabled>ダウンロード</button>
+          </div>
+        </div>
+
+        <div class="control">
+          <label for="nameInput">名前</label>
+          <input id="nameInput" type="text" autocomplete="name" inputmode="latin" pattern="[A-Za-z]*" placeholder="例: Yamada">
+        </div>
+
+        <div class="control">
+          <label for="samplingSlider">サンプリングレート <strong id="samplingValue">100</strong> Hz</label>
+          <input id="samplingSlider" type="range" min="10" max="100" step="1" value="100">
+        </div>
+
+        <details>
+          <summary>現在値</summary>
+          <div class="readouts" aria-label="現在値">
+            <div class="metric">
+              <span>時刻</span>
+              <strong><span id="currentTime">0</span> ms</strong>
+            </div>
+            <div class="metric">
+              <span>時間刻み幅</span>
+              <strong><span id="intervalTime">20</span> ms</strong>
+            </div>
+            <div class="metric">
+              <span>センサ状態</span>
+              <strong id="sensorState">停止中</strong>
+            </div>
+          </div>
+        </details>
+
+        <p id="status" class="status">iPhone/iPadでは、SafariでHTTPSまたはlocalhost上のページを開いてからセンサをオンにしてください。</p>
+      </section>
+
+      <section class="charts">
+        <div class="panel chart-block">
+          <h2>加速度 [m/s²]</h2>
+          <p>デバイスに固定された座標系です。</p>
+          <div id="deviceAcceleration"></div>
+        </div>
+
+        <div class="panel chart-block">
+          <h2>回転補正後の加速度 [m/s²]</h2>
+          <p>z軸を鉛直上向き、y軸をセンサ起動時の端末y軸の水平射影方向にした静止座標系です。</p>
+          <div id="worldAcceleration"></div>
+        </div>
+
+        <details class="panel chart-block">
+          <summary>オイラー角 [deg]</summary>
+          <p>端末から得た z-x-y 系の角度です。</p>
+          <div id="orientation"></div>
+        </details>
+
+        <details class="panel chart-block">
+          <summary>回転速度 [deg/s]</summary>
+          <div id="rotationRate"></div>
+        </details>
+      </section>
+    </main>
+
+    <script>
+      const colors = {
+        x: "#1F77B4",
+        y: "#FF7F0E",
+        z: "#2CA02C"
+      };
+
+      const chartUpdateInterval = 50;
+      let ax = 0;
+      let ay = 0;
+      let az = 0;
+      let ar = 0;
+      let br = 0;
+      let gr = 0;
+      let arr = 0;
+      let brr = 0;
+      let grr = 0;
+      let dt = 10;
+      let timerId;
+      let startTime = 0;
+      let measurementStartedAt;
+      let measurementName = "";
+      let sensorOn = false;
+      let measuring = false;
+      let dataText;
+      let iosMode = false;
+
+      const el = {
+        sensorButton: document.getElementById("sensorButton"),
+        startButton: document.getElementById("startButton"),
+        stopButton: document.getElementById("stopButton"),
+        downloadButton: document.getElementById("downloadButton"),
+        nameInput: document.getElementById("nameInput"),
+        samplingSlider: document.getElementById("samplingSlider"),
+        samplingValue: document.getElementById("samplingValue"),
+        currentTime: document.getElementById("currentTime"),
+        intervalTime: document.getElementById("intervalTime"),
+        sensorState: document.getElementById("sensorState"),
+        status: document.getElementById("status")
+      };
+
+      function createChart(container, label, color) {
+        const row = document.createElement("div");
+        row.className = "series";
+
+        const value = document.createElement("div");
+        value.className = `series-label ${label.colorName}`;
+        value.textContent = `${label.text}: 0.000`;
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        const data = [];
+        let min = 0;
+        let max = 0;
+
+        function resize() {
+          const rect = canvas.getBoundingClientRect();
+          const ratio = window.devicePixelRatio || 1;
+          canvas.width = Math.max(1, Math.floor(rect.width * ratio));
+          canvas.height = Math.max(1, Math.floor(rect.height * ratio));
+          ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+          draw();
+        }
+
+        function toCanvasY(v, height) {
+          if (max === min) return height / 2;
+          return height - height * (v - min) / (max - min);
+        }
+
+        function draw() {
+          const width = canvas.clientWidth;
+          const height = canvas.clientHeight;
+          ctx.clearRect(0, 0, width, height);
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, width, height);
+
+          ctx.strokeStyle = "#9aa7b7";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(0, toCanvasY(0, height));
+          ctx.lineTo(width, toCanvasY(0, height));
+          ctx.stroke();
+
+          if (!data.length) return;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(0, toCanvasY(data[0], height));
+          for (let i = 1; i < data.length; i += 1) {
+            ctx.lineTo(i, toCanvasY(data[i], height));
+          }
+          ctx.stroke();
+        }
+
+        row.append(value, canvas);
+        container.appendChild(row);
+        requestAnimationFrame(resize);
+        window.addEventListener("resize", resize);
+
+        return {
+          add(v) {
+            if (typeof v !== "number" || Number.isNaN(v)) return;
+            const width = Math.max(1, Math.floor(canvas.clientWidth));
+            if (data.length >= width) {
+              data.splice(0, data.length - width + 1);
+            }
+            data.push(v);
+            if (v < min) min = v;
+            if (v > max) max = v;
+            value.textContent = `${label.text}: ${v.toFixed(3)}`;
+            draw();
+          },
+          reset() {
+            data.length = 0;
+            min = 0;
+            max = 0;
+            value.textContent = `${label.text}: 0.000`;
+            draw();
+          }
+        };
+      }
+
+      function createTripleCharts(containerId, labels) {
+        const container = document.getElementById(containerId);
+        return {
+          x: createChart(container, { text: labels[0], colorName: "blue" }, colors.x),
+          y: createChart(container, { text: labels[1], colorName: "orange" }, colors.y),
+          z: createChart(container, { text: labels[2], colorName: "green" }, colors.z),
+          reset() {
+            this.x.reset();
+            this.y.reset();
+            this.z.reset();
+          },
+          update(x, y, z) {
+            this.x.add(x);
+            this.y.add(y);
+            this.z.add(z);
+          }
+        };
+      }
+
+      const charts = {
+        deviceAcceleration: createTripleCharts("deviceAcceleration", ["ax", "ay", "az"]),
+        worldAcceleration: createTripleCharts("worldAcceleration", ["awx", "awy", "awz"]),
+        orientation: createTripleCharts("orientation", ["alpha", "beta", "gamma"]),
+        rotationRate: createTripleCharts("rotationRate", ["alpha dot", "beta dot", "gamma dot"])
+      };
+
+      function setStatus(message, type = "") {
+        el.status.textContent = message;
+        el.status.className = `status ${type}`.trim();
+      }
+
+      function updateSampling() {
+        el.samplingValue.textContent = el.samplingSlider.value;
+        dt = Math.round(1000 / Number(el.samplingSlider.value));
+        el.intervalTime.textContent = dt;
+      }
+
+      function setUiState() {
+        el.sensorButton.textContent = sensorOn ? "センサをオフ" : "センサをオン";
+        el.sensorState.textContent = sensorOn ? "起動中" : "停止中";
+        el.startButton.disabled = !sensorOn || measuring;
+        el.stopButton.disabled = !measuring;
+        el.sensorButton.disabled = measuring;
+        el.nameInput.disabled = measuring;
+        el.samplingSlider.disabled = sensorOn;
+        el.downloadButton.disabled = measuring || !dataText;
+      }
+
+      function resetCharts() {
+        Object.values(charts).forEach((chart) => chart.reset());
+      }
+
+      function handleOrientation(event) {
+        ar = (event.alpha || 0) * Math.PI / 180;
+        br = (event.beta || 0) * Math.PI / 180;
+        gr = (event.gamma || 0) * Math.PI / 180;
+      }
+
+      function handleMotion(event) {
+        const acc = event.acceleration || {};
+        if (iosMode) {
+          ax = -(acc.x || 0);
+          ay = -(acc.y || 0);
+          az = -(acc.z || 0);
+        } else {
+          ax = acc.x || 0;
+          ay = acc.y || 0;
+          az = acc.z || 0;
+        }
+
+        const rotrate = event.rotationRate || {};
+        arr = (rotrate.gamma || 0) * Math.PI / 180;
+        brr = (rotrate.alpha || 0) * Math.PI / 180;
+        grr = (rotrate.beta || 0) * Math.PI / 180;
+      }
+
+      // Same Euler-angle order as the reference: Rz(alpha) * Rx(beta) * Ry(gamma).
+      function transformAcceleration(acx, acy, acz, ear, ebr, egr) {
+        const csa = Math.cos(ear);
+        const sna = Math.sin(ear);
+        const csb = Math.cos(ebr);
+        const snb = Math.sin(ebr);
+        const csg = Math.cos(egr);
+        const sng = Math.sin(egr);
+        const awx = (csa * csg - sna * snb * sng) * acx - csb * sna * acy + (csa * sng + csg * sna * snb) * acz;
+        const awy = (csg * sna + csa * snb * sng) * acx + csa * csb * acy + (sna * sng - csa * csg * snb) * acz;
+        const awz = -csb * sng * acx + snb * acy + csb * csg * acz;
+        return [awx, awy, awz];
+      }
+
+      async function requestSensorPermission() {
+        if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === "function") {
+          const orientationPermission = await DeviceOrientationEvent.requestPermission();
+          if (orientationPermission !== "granted") {
+            throw new Error("DeviceOrientationEvent is not permitted.");
+          }
+        }
+
+        if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === "function") {
+          const motionPermission = await DeviceMotionEvent.requestPermission();
+          if (motionPermission !== "granted") {
+            throw new Error("DeviceMotionEvent is not permitted.");
+          }
+          iosMode = true;
+        }
+      }
+
+      async function startSensors() {
+        if (measuring) return;
+        try {
+          await requestSensorPermission();
+          resetCharts();
+          window.addEventListener("deviceorientation", handleOrientation, false);
+          window.addEventListener("devicemotion", handleMotion, false);
+          sensorOn = true;
+          let lastChartTime = Date.now();
+
+          timerId = window.setInterval(() => {
+            const now = Date.now();
+            const [awx, awy, awz] = transformAcceleration(ax, ay, az, ar, br, gr);
+
+            if (now >= lastChartTime + chartUpdateInterval) {
+              charts.orientation.update(ar * 180 / Math.PI, br * 180 / Math.PI, gr * 180 / Math.PI);
+              charts.rotationRate.update(arr * 180 / Math.PI, brr * 180 / Math.PI, grr * 180 / Math.PI);
+              charts.deviceAcceleration.update(ax, ay, az);
+              charts.worldAcceleration.update(awx, awy, awz);
+              lastChartTime = now;
+            }
+
+            if (!measuring) return;
+            const elapsed = now - startTime;
+            el.currentTime.textContent = elapsed;
+            dataText += `${(elapsed / 1000).toFixed(3)},${ax.toFixed(5)},${ay.toFixed(5)},${az.toFixed(5)},${awx.toFixed(5)},${awy.toFixed(5)},${awz.toFixed(5)},${ar.toFixed(5)},${br.toFixed(5)},${gr.toFixed(5)},${arr.toFixed(5)},${brr.toFixed(5)},${grr.toFixed(5)}\n`;
+          }, dt);
+
+          setStatus("センサを起動しました。測定開始を押すとCSV記録を始めます。", "ok");
+        } catch (error) {
+          setStatus(error.message || "センサの許可を取得できませんでした。", "error");
+          stopSensors();
+        } finally {
+          setUiState();
+        }
+      }
+
+      function stopSensors() {
+        window.clearInterval(timerId);
+        window.removeEventListener("deviceorientation", handleOrientation, false);
+        window.removeEventListener("devicemotion", handleMotion, false);
+        sensorOn = false;
+        measuring = false;
+        setUiState();
+      }
+
+      function startMeasurement() {
+        if (!sensorOn) return;
+        measuring = true;
+        measurementName = sanitizeFilePart(el.nameInput.value.trim());
+        dataText = "time[s],ax[m/s^2],ay[m/s^2],az[m/s^2],awx[m/s^2],awy[m/s^2],awz[m/s^2],ar[rad],br[rad],gr[rad],arr[rad/s],brr[rad/s],grr[rad/s]\n";
+        measurementStartedAt = new Date();
+        startTime = measurementStartedAt.getTime();
+        el.currentTime.textContent = "0";
+
+        const [awx, awy, awz] = transformAcceleration(ax, ay, az, ar, br, gr);
+        dataText += `0.000,${ax.toFixed(5)},${ay.toFixed(5)},${az.toFixed(5)},${awx.toFixed(5)},${awy.toFixed(5)},${awz.toFixed(5)},${ar.toFixed(5)},${br.toFixed(5)},${gr.toFixed(5)},${arr.toFixed(5)},${brr.toFixed(5)},${grr.toFixed(5)}\n`;
+
+        setStatus("測定中です。終了を押すとCSVをダウンロードできます。", "ok");
+        setUiState();
+      }
+
+      function stopMeasurement() {
+        measuring = false;
+        setStatus("測定を終了しました。CSVをダウンロードできます。", "ok");
+        setUiState();
+      }
+
+      function sanitizeFilePart(value) {
+        return value.replace(/[^A-Za-z]/g, "");
+      }
+
+      function downloadCsv() {
+        if (measuring || !dataText) return;
+        const date = measurementStartedAt || new Date(startTime);
+        const pad = (n) => String(n).padStart(2, "0");
+        const datePart = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
+        const timePart = `${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+        const filename = measurementName ? `${datePart}_${measurementName}_${timePart}.csv` : `${datePart}_${timePart}.csv`;
+        const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+        const blob = new Blob([bom, dataText], { type: "text/csv" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+
+      el.samplingSlider.addEventListener("input", updateSampling);
+      el.nameInput.addEventListener("input", () => {
+        el.nameInput.value = sanitizeFilePart(el.nameInput.value);
+      });
+      el.sensorButton.addEventListener("click", () => {
+        if (sensorOn) {
+          stopSensors();
+          setStatus("センサを停止しました。");
+        } else {
+          startSensors();
+        }
+      });
+      el.startButton.addEventListener("click", startMeasurement);
+      el.stopButton.addEventListener("click", stopMeasurement);
+      el.downloadButton.addEventListener("click", downloadCsv);
+
+      updateSampling();
+      setUiState();
+    </script>
+  </body>
+</html>
