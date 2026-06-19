@@ -412,13 +412,13 @@
 
       <section class="charts">
         <div class="panel chart-block">
-          <h2>加速度 [m/s²]</h2>
+          <h2>加速度 [cm/s²]</h2>
           <p>デバイスに固定された座標系です。</p>
           <div id="deviceAcceleration"></div>
         </div>
 
         <div class="panel chart-block">
-          <h2>回転補正後の加速度 [m/s²]</h2>
+          <h2>回転補正後の加速度 [cm/s²]</h2>
           <p>z軸を鉛直上向き、y軸をセンサ起動時の端末y軸の水平射影方向にした静止座標系です。</p>
           <div id="worldAcceleration"></div>
         </div>
@@ -442,6 +442,7 @@
         y: "#FF7F0E",
         z: "#2CA02C"
       };
+      const accelerationScale = 100;
 
       const chartUpdateInterval = 50;
       let ax = 0;
@@ -630,13 +631,13 @@
       function handleMotion(event) {
         const acc = event.acceleration || {};
         if (iosMode) {
-          ax = -(acc.x || 0);
-          ay = -(acc.y || 0);
-          az = -(acc.z || 0);
+          ax = -(acc.x || 0) * accelerationScale;
+          ay = -(acc.y || 0) * accelerationScale;
+          az = -(acc.z || 0) * accelerationScale;
         } else {
-          ax = acc.x || 0;
-          ay = acc.y || 0;
-          az = acc.z || 0;
+          ax = (acc.x || 0) * accelerationScale;
+          ay = (acc.y || 0) * accelerationScale;
+          az = (acc.z || 0) * accelerationScale;
         }
 
         const rotrate = event.rotationRate || {};
@@ -732,7 +733,7 @@
         if (!sensorOn) return;
         measuring = true;
         measurementName = sanitizeFilePart(el.nameInput.value.trim());
-        dataText = "time[s],ax[m/s^2],ay[m/s^2],az[m/s^2],awx[m/s^2],awy[m/s^2],awz[m/s^2],ar[rad],br[rad],gr[rad],arr[rad/s],brr[rad/s],grr[rad/s]\n";
+        dataText = "time[s],ax[cm/s^2],ay[cm/s^2],az[cm/s^2],awx[cm/s^2],awy[cm/s^2],awz[cm/s^2],ar[rad],br[rad],gr[rad],arr[rad/s],brr[rad/s],grr[rad/s]\n";
         measurementStartedAt = new Date();
         startTime = measurementStartedAt.getTime();
         el.currentTime.textContent = "0";
